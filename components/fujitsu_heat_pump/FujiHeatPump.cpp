@@ -1,6 +1,6 @@
 /* This file is based on unreality's FujiHeatPump project */
 
-// #define DEBUG_FUJI
+#define DEBUG_FUJI
 #include "FujiHeatPump.h"
 
 // The esphome ESP_LOGx macros expand to reference esp_log_printf_, but do so
@@ -128,9 +128,9 @@ void FujiHeatPump::connect(HardwareSerial *serial, bool secondary,
 }
 
 void FujiHeatPump::printFrame(byte buf[8], FujiFrame ff) {
-    ESP_LOGD("fuji", "%X %X %X %X %X %X %X %X  ", buf[0], buf[1], buf[2],
+    ESP_LOGE("fuji", "%X %X %X %X %X %X %X %X  ", buf[0], buf[1], buf[2],
              buf[3], buf[4], buf[5], buf[6], buf[7]);
-    ESP_LOGD(
+    ESP_LOGE(
         "fuji",
         " mSrc: %d mDst: %d mType: %d write: %d login: %d unknown: %d onOff: "
         "%d temp: %d, mode: %d cP:%d uM:%d cTemp:%d acError:%d \n",
@@ -171,7 +171,7 @@ bool FujiHeatPump::waitForFrame() {
         ff = decodeFrame();
 
 #ifdef DEBUG_FUJI
-        ESP_LOGD("fuji", "<-- ");
+        ESP_LOGE("fuji", "<-- ");
         printFrame(readBuf, ff);
 #endif
 
@@ -179,62 +179,18 @@ bool FujiHeatPump::waitForFrame() {
             lastFrameReceived = millis();
 
             if (ff.messageType == static_cast<byte>(FujiMessageType::STATUS)) {
-                if (ff.controllerPresent == 1) {
-                    // we have logged into the indoor unit
-                    // this is what most frames are
-                    ff.messageSource = controllerAddress;
+                // secondary controller never seems to get any other
+                // message types, only status with controllerPresent ==
+                // 0 the secondary controller seems to send the same
+                // flags no matter which message type
 
-                    if (seenSecondaryController) {
-                        ff.messageDest =
-                            static_cast<byte>(FujiAddress::SECONDARY);
-                        ff.loginBit = true;
-                        ff.controllerPresent = 0;
-                    } else {
-                        ff.messageDest = static_cast<byte>(FujiAddress::UNIT);
-                        ff.loginBit = false;
-                        ff.controllerPresent = 1;
-                    }
-
-                    ff.updateMagic = 0;
-                    ff.unknownBit = true;
-                    ff.writeBit = 0;
-                    ff.messageType = static_cast<byte>(FujiMessageType::STATUS);
-                } else {
-                    if (controllerIsPrimary) {
-                        // if this is the first message we have received,
-                        // announce ourselves to the indoor unit
-                        ff.messageSource = controllerAddress;
-                        ff.messageDest = static_cast<byte>(FujiAddress::UNIT);
-                        ff.loginBit = false;
-                        ff.controllerPresent = 0;
-                        ff.updateMagic = 0;
-                        ff.unknownBit = true;
-                        ff.writeBit = 0;
-                        ff.messageType =
-                            static_cast<byte>(FujiMessageType::LOGIN);
-
-                        ff.onOff = 0;
-                        ff.temperature = 0;
-                        ff.acMode = 0;
-                        ff.fanMode = 0;
-                        ff.swingMode = 0;
-                        ff.swingStep = 0;
-                        ff.acError = 0;
-                    } else {
-                        // secondary controller never seems to get any other
-                        // message types, only status with controllerPresent ==
-                        // 0 the secondary controller seems to send the same
-                        // flags no matter which message type
-
-                        ff.messageSource = controllerAddress;
-                        ff.messageDest = static_cast<byte>(FujiAddress::UNIT);
-                        ff.loginBit = false;
-                        ff.controllerPresent = 1;
-                        ff.updateMagic = 2;
-                        ff.unknownBit = true;
-                        ff.writeBit = 0;
-                    }
-                }
+                ff.messageSource = controllerAddress;
+                ff.messageDest = static_cast<byte>(FujiAddress::PRIMARY);
+                ff.loginBit = false;
+                ff.controllerPresent = 1;
+                ff.updateMagic = 2;
+                ff.unknownBit = true;
+                ff.writeBit = 0;
 
                 // if we have any updates, set the flags
                 if (updateFields) {
@@ -266,29 +222,10 @@ bool FujiHeatPump::waitForFrame() {
                 }
 
                 memcpy(&currentState, &ff, sizeof(FujiFrame));
-            } else if (ff.messageType ==
-                       static_cast<byte>(FujiMessageType::LOGIN)) {
-                // received a login frame OK frame
-                // the primary will send packet to a secondary controller to see
-                // if it exists
-                ff.messageSource = controllerAddress;
-                ff.messageDest = static_cast<byte>(FujiAddress::SECONDARY);
-                ff.loginBit = true;
-                ff.controllerPresent = 1;
-                ff.updateMagic = 0;
-                ff.unknownBit = true;
-                ff.writeBit = 0;
-
-                ff.onOff = currentState.onOff;
-                ff.temperature = currentState.temperature;
-                ff.acMode = currentState.acMode;
-                ff.fanMode = currentState.fanMode;
-                ff.swingMode = currentState.swingMode;
-                ff.swingStep = currentState.swingStep;
-                ff.acError = currentState.acError;
-            } else if (ff.messageType ==
+            }
+            else if (ff.messageType ==
                        static_cast<byte>(FujiMessageType::ERROR)) {
-                ESP_LOGD("fuji", "AC ERROR RECV: ");
+                ESP_LOGE("fuji", "AC ERROR RECV: ");
                 printFrame(readBuf, ff);
                 // handle errors here
                 return false;
@@ -297,7 +234,7 @@ bool FujiHeatPump::waitForFrame() {
             encodeFrame(ff);
 
 #ifdef DEBUG_FUJI
-            ESP_LOGD("fuji", "--> ");
+            ESP_LOGE("fuji", "--> ");
             printFrame(writeBuf, ff);
 #endif
 
@@ -306,14 +243,7 @@ bool FujiHeatPump::waitForFrame() {
             }
 
             pendingFrame = true;
-        } else if (ff.messageDest ==
-                   static_cast<byte>(FujiAddress::SECONDARY)) {
-            seenSecondaryController = true;
-            currentState.controllerTemp =
-                ff.controllerTemp;  // we dont have a temp sensor, use the temp
-                                    // reading from the secondary controller
         }
-
         return true;
     }
 

@@ -4,8 +4,12 @@
 #include "esphome/core/component.h"
 #include "esphome/core/hal.h"
 #include "esphome/core/defines.h"
+#include "esphome/core/log.h"
 
 #include "HardwareSerial.h"
+
+namespace esphome {
+namespace fujitsu {
 
 typedef uint8_t byte;
 
@@ -169,3 +173,7 @@ const byte kFanModeUpdateMask = 0b00010000;
 const byte kEconomyModeUpdateMask = 0b00001000;
 const byte kSwingModeUpdateMask = 0b00000100;
 const byte kSwingStepUpdateMask = 0b00000010;
+
+
+}
+}

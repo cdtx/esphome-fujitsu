@@ -1,12 +1,17 @@
 /* This file is based on unreality's FujiHeatPump project */
 
-#define DEBUG_FUJI
+// #define DEBUG_FUJI
 #include "FujiHeatPump.h"
 
 // The esphome ESP_LOGx macros expand to reference esp_log_printf_, but do so
 // without using its namespace. https://github.com/esphome/issues/issues/3196
 // The workaround is to pull that particular function into this namespace.
-//using esphome::esp_log_printf_;
+// using esphome::esp_log_printf_;
+
+namespace esphome {
+namespace fujitsu {
+
+static const char *const TAG = "fujitsu_climate.component";
 
 FujiFrame FujiHeatPump::decodeFrame() {
     FujiFrame ff;
@@ -128,10 +133,10 @@ void FujiHeatPump::connect(HardwareSerial *serial, bool secondary,
 }
 
 void FujiHeatPump::printFrame(byte buf[8], FujiFrame ff) {
-    ESP_LOGE("fuji", "%X %X %X %X %X %X %X %X  ", buf[0], buf[1], buf[2],
+    ESP_LOGD(TAG, "%.2X %.2X %.2X %.2X %.2X %.2X %.2X %.2X  ", buf[0], buf[1], buf[2],
              buf[3], buf[4], buf[5], buf[6], buf[7]);
-    ESP_LOGE(
-        "fuji",
+    ESP_LOGD(
+        TAG,
         " mSrc: %d mDst: %d mType: %d write: %d login: %d unknown: %d onOff: "
         "%d temp: %d, mode: %d cP:%d uM:%d cTemp:%d acError:%d \n",
         ff.messageSource, ff.messageDest, ff.messageType, ff.writeBit,
@@ -141,6 +146,8 @@ void FujiHeatPump::printFrame(byte buf[8], FujiFrame ff) {
 
 void FujiHeatPump::sendPendingFrame() {
     if (pendingFrame && (millis() - lastFrameReceived) > 50) {
+        ESP_LOGD(TAG, "Write: %.2X %.2X %.2X %.2X %.2X %.2X %.2X %.2X  ", writeBuf[0]^0xFF, writeBuf[1]^0xFF, writeBuf[2]^0xFF,
+             writeBuf[3]^0xFF, writeBuf[4]^0xFF, writeBuf[5]^0xFF, writeBuf[6]^0xFF, writeBuf[7]^0xFF);
         _serial->write(writeBuf, 8);
         _serial->flush();
         pendingFrame = false;
@@ -149,6 +156,8 @@ void FujiHeatPump::sendPendingFrame() {
         _serial->readBytes(
             writeBuf,
             8);  // read back our own frame so we dont process it again
+        ESP_LOGD(TAG, "ReRead: %.2X %.2X %.2X %.2X %.2X %.2X %.2X %.2X  ", writeBuf[0]^0xFF, writeBuf[1]^0xFF, writeBuf[2]^0xFF,
+             writeBuf[3]^0xFF, writeBuf[4]^0xFF, writeBuf[5]^0xFF, writeBuf[6]^0xFF, writeBuf[7]^0xFF);
     }
 }
 
@@ -159,8 +168,12 @@ bool FujiHeatPump::waitForFrame() {
         memset(readBuf, 0, 8);
         int bytesRead = _serial->readBytes(readBuf, 8);
 
+        ESP_LOGD(TAG, "Read: %.2X %.2X %.2X %.2X %.2X %.2X %.2X %.2X  ", readBuf[0]^0xFF, readBuf[1]^0xFF, readBuf[2]^0xFF,
+             readBuf[3]^0xFF, readBuf[4]^0xFF, readBuf[5]^0xFF, readBuf[6]^0xFF, readBuf[7]^0xFF);
+
         if (bytesRead < 8) {
             // skip incomplete frame
+            ESP_LOGD(TAG, "skip (%d)", bytesRead);
             return false;
         }
 
@@ -171,7 +184,7 @@ bool FujiHeatPump::waitForFrame() {
         ff = decodeFrame();
 
 #ifdef DEBUG_FUJI
-        ESP_LOGE("fuji", "<-- ");
+        ESP_LOGD(TAG, "<-- ");
         printFrame(readBuf, ff);
 #endif
 
@@ -225,7 +238,7 @@ bool FujiHeatPump::waitForFrame() {
             }
             else if (ff.messageType ==
                        static_cast<byte>(FujiMessageType::ERROR)) {
-                ESP_LOGE("fuji", "AC ERROR RECV: ");
+                ESP_LOGD(TAG, "AC ERROR RECV: ");
                 printFrame(readBuf, ff);
                 // handle errors here
                 return false;
@@ -234,7 +247,7 @@ bool FujiHeatPump::waitForFrame() {
             encodeFrame(ff);
 
 #ifdef DEBUG_FUJI
-            ESP_LOGE("fuji", "--> ");
+            ESP_LOGD(TAG, "--> ");
             printFrame(writeBuf, ff);
 #endif
 
@@ -338,3 +351,6 @@ void FujiHeatPump::setState(FujiFrame *state) {
 }
 
 byte FujiHeatPump::getUpdateFields() { return updateFields; }
+
+}
+}
